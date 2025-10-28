@@ -1,2 +1,11 @@
+# Lang artifacts
 /target
+
+# IDEs
+## Vim
 *.swp
+*.swo
+
+# OS Files
+## MacOS
+.DS_Store
