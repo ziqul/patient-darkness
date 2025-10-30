@@ -1,9 +1,26 @@
+// --- IMPORTS ---
 use bevy::prelude::*;
 
 use crate::globals;
 
-//
-// Markers
+
+// --- GENERIC STRUCTS ---
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
+enum Phases {
+    Start,
+    RevealTitle,
+    PauseBetweenRevealTitleAndRevealSubtitle,
+    RevealSubtitle,
+    PauseAfterRevealSubtitle,
+}
+
+
+// --- COMPONENTS ---
+
+// ???
+
+
+// --- MARKERS ---
 #[derive(Component)]
 struct StateMarker;
 #[derive(Component)]
@@ -12,69 +29,80 @@ struct TitleNodeMarker;
 struct SubtitleNodeMarker;
 
 
+// --- RESOURCES ---
 #[derive(Resource, Debug, Clone)]
 struct Config {
-    black_hold: f32,
-    drop_duration: f32,
-    after_drop_pause: f32,
-    subtitle_reveal_pause: f32,
-    final_hold: f32,
-    title_start_y: f32,
-    title_end_y: f32,
+    pause_before_reveal_title: f32,
+    reveal_title_duration: f32,
+    pause_between_reveal_title_and_reveal_subtitle: f32,
+    reveal_subtitle_duration: f32,
+    pause_after_reveal_subtitle: f32,
+    title_size: f32,
+    subtitle_size: f32,
+    distance_between_title_and_subtitle: f32,
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
-            black_hold: 1.0,
-            drop_duration: 1.0,
-            after_drop_pause: 1.0,
-            subtitle_reveal_pause: 1.0,
-            final_hold: 1.0,
-            title_start_y: 520.0,
-            title_end_y: 160.0,
+            pause_before_reveal_title: 1.0,
+            reveal_title_duration: 1.0,
+            pause_between_reveal_title_and_reveal_subtitle: 1.0,
+            reveal_subtitle_duration: 1.0,
+            pause_after_reveal_subtitle: 10.0,
+            title_size: 96.0,
+            subtitle_size: 60.0,
+            distance_between_title_and_subtitle: 20.0,
         }
     }
 }
 
-
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
-enum Phases {
-    Black,
-    DropTitle,
-    PauseAfterDrop,
-    RevealSubtitle,
-    FinalHold,
-}
-
-
 #[derive(Resource, Debug)]
 struct Clock {
-    phase: Phases,
     t: f32,
 }
 
 impl Default for Clock {
     fn default() -> Self {
-        Self { phase: Phases::Black, t: 0.0 }
+        Self { t: 0.0 }
+    }
+}
+
+#[derive(Resource, Debug)]
+struct Phase {
+  ph: Phases
+}
+
+impl Default for Phase {
+    fn default() -> Self {
+        Self { ph: Phases::Start }
     }
 }
 
 
+// --- PLUGIN ---
 pub struct PluginImpl;
 
 impl Plugin for PluginImpl {
     fn build(&self, app: &mut App) {
-        app.init_resource::<Config>()
+        app
+            .init_resource::<Config>()
             .init_resource::<Clock>()
-            .add_systems(OnEnter(globals::AppState::Title), title_setup)
-            .add_systems(Update, title_update.run_if(in_state(globals::AppState::Title)))
+            .init_resource::<Phase>()
+            .add_systems(OnEnter(globals::AppState::Title), setup)
+            .add_systems(Update, roll_title.run_if(in_state(globals::AppState::Title)))
             .add_systems(OnExit(globals::AppState::Title), globals::despawn_with::<StateMarker>);
     }
 }
 
 
-fn title_setup(mut commands: Commands, config: Res<Config>, asset_server: Res<AssetServer>) {
+// --- SETUP ---
+fn setup(
+    mut commands: Commands,
+    config: Res<Config>,
+    asset_server: Res<AssetServer>,
+    window: Query<&Window>,
+) {
     commands.spawn((Camera2d, StateMarker));
 
     let font = asset_server.load("fonts/FiraSans-Bold.ttf");
@@ -97,13 +125,14 @@ fn title_setup(mut commands: Commands, config: Res<Config>, asset_server: Res<As
                 Text::new("TENNIS FOR TWO"),
                 TextFont {
                   font: font.clone(),
-                  font_size: 72.0,
+                  font_size: config.title_size,
                   ..default()
                 },
                 TextColor(Color::WHITE),
                 Node {
                     position_type: PositionType::Absolute,
-                    top: Val::Px(-config.title_start_y),
+                    // [top of screens] + [title height (title size)]
+                    top: Val::Px(0. - config.title_size),
                     left: Val::Auto,
                     right: Val::Auto,
                     ..default()
@@ -116,13 +145,16 @@ fn title_setup(mut commands: Commands, config: Res<Config>, asset_server: Res<As
                 Text::new("a text-only homage"),
                 TextFont {
                   font: sub_font.clone(),
-                  font_size: 24.0,
+                  font_size: config.subtitle_size,
                   ..default()
                 },
                 TextColor(Color::WHITE),
                 Node {
                     position_type: PositionType::Absolute,
-                    top: Val::Px(config.title_end_y + 160.0),
+                    top: Val::Px(
+                      window.single().expect("BOOM!").height() / 2. +
+                      config.distance_between_title_and_subtitle / 2.
+                    ),
                     left: Val::Auto,
                     right: Val::Auto,
                     ..default()
@@ -133,6 +165,9 @@ fn title_setup(mut commands: Commands, config: Res<Config>, asset_server: Res<As
             ));
         });
 }
+
+
+// --- SYSTEMS ---
 
 // fn example(
 //     mut query: Query<(&Health, &mut Transform, Option<&Player>), (With<Player>, Without<Enemy>)>,
@@ -151,53 +186,61 @@ fn title_setup(mut commands: Commands, config: Res<Config>, asset_server: Res<As
 //     }
 // }
 
-fn title_update(
+fn roll_title(
     // Global resources
     time: Res<Time>,
+    window: Query<&Window>,
     mut next_state: ResMut<NextState<globals::AppState>>,
 
     // Local resources
     config: Res<Config>,
     mut clock: ResMut<Clock>,
+    mut phase: ResMut<Phase>,
     mut title_query: Query<&mut Node, With<TitleNodeMarker>>,
     mut subtitle_query: Query<&mut Visibility, With<SubtitleNodeMarker>>,
 ) {
     clock.t += time.delta_secs();
 
-    match clock.phase {
-        Phases::Black => {
-            if clock.t >= config.black_hold {
-                clock.phase = Phases::DropTitle;
+    match phase.ph {
+        Phases::Start => {
+            if clock.t >= config.pause_before_reveal_title {
+                phase.ph = Phases::RevealTitle;
                 clock.t = 0.0;
             }
         }
-        Phases::DropTitle => {
+        Phases::RevealTitle => {
             let mut title_node = title_query.single_mut().unwrap();
-            let p = (clock.t / config.drop_duration).clamp(0.0, 1.0);
-            let y = globals::lerp(-config.title_start_y, config.title_end_y, p);
+            let p = (clock.t / config.reveal_title_duration).clamp(0., 1.);
+            let y = globals::lerp(
+              0. - config.title_size,
+              window.single().expect("BOOM!").height() / 2. - config.title_size - config.distance_between_title_and_subtitle / 2.,
+              p
+            );
             title_node.top = Val::Px(y);
             if p >= 1.0 {
-                clock.phase = Phases::PauseAfterDrop;
+                phase.ph = Phases::PauseBetweenRevealTitleAndRevealSubtitle;
                 clock.t = 0.0;
             }
         }
-        Phases::PauseAfterDrop => {
-            if clock.t >= config.after_drop_pause {
-                clock.phase = Phases::RevealSubtitle;
+        Phases::PauseBetweenRevealTitleAndRevealSubtitle => {
+            if clock.t >= config.pause_between_reveal_title_and_reveal_subtitle {
+                phase.ph = Phases::RevealSubtitle;
                 clock.t = 0.0;
+                debug!("Move to RevealSubtitle phase");
             }
         }
         Phases::RevealSubtitle => {
+            debug!("Revealing subtitle");
             if let Ok(mut vis) = subtitle_query.single_mut() {
                 *vis = Visibility::Visible;
             }
-            if clock.t >= config.subtitle_reveal_pause {
-                clock.phase = Phases::FinalHold;
+            if clock.t >= config.reveal_subtitle_duration {
+                phase.ph = Phases::PauseAfterRevealSubtitle;
                 clock.t = 0.0;
             }
         }
-        Phases::FinalHold => {
-            if clock.t >= config.final_hold {
+        Phases::PauseAfterRevealSubtitle => {
+            if clock.t >= config.pause_after_reveal_subtitle {
                 next_state.set(globals::AppState::MainMenu);
             }
         }
