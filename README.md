@@ -1,6 +1,6 @@
 # Tennis for Two (Bevy prototype)
 
-> README.md by Cortext AI
+> README.md by Codex (of OpenAI)
 
 Remake of the ["Tennis for Two"](https://en.wikipedia.org/wiki/Tennis_for_Two). It's casual, it's experimental, README is for notes.
 
