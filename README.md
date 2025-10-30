@@ -1,11 +1,12 @@
 # Tennis for Two (Bevy prototype)
 
-> Heads up: this description was drafted with help from an AI assistant.
+> README.md by Cortext AI
 
-Hey future me (and any curious friends or recruiters 👋). This repo is my place to poke at a Bevy-powered remake of the old "Tennis for Two" idea. It's casual, it's experimental, and it's where I stash notes so I remember what on earth I was trying to do the next time I open the project.
+Remake of the ["Tennis for Two"](https://en.wikipedia.org/wiki/Tennis_for_Two). It's casual, it's experimental, README is for notes.
 
 ## What's working
 
+### 30/10/25
 * Booting into a simple title sequence that fades through a few placeholder app states (Title → Main Menu → Game → Pause → End).
 * A handful of helper systems and resources (`Clock`, `Phase`, `Config`, `globals::lerp`, `despawn_with`) that keep the UI flow moving.
 
